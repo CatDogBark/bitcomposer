@@ -35,32 +35,45 @@ ROWS_PER_PATTERN = 64
 STEPS_PER_ROW = 4  # 16 steps = 64 rows / 4 rows per step
 
 
-def _pick_instruments(prefer_fm: bool | None = None) -> dict[str, str]:
+def _pick_instruments(prefer_fm: bool | None = None,
+                      bass_weight: str = "heavy") -> dict[str, str]:
     """Pick a random instrument set for the song."""
     if prefer_fm is True:
-        # Genesis-style: favor FM synthesis + distorted tones
         lead_choices = ["fm_lead", "fm_lead", "fm_bell", "fm_brass", "fm_organ"]
         harmony_choices = ["fm_pad", "fm_bell", "fm_organ", "sweep_lead"]
-        bass_choices = ["fm_bass", "fm_bass", "distorted_bass", "filtered_bass"]
+        bass_heavy = ["fm_bass", "fm_bass", "distorted_bass", "filtered_bass"]
+        bass_medium = ["fm_bass", "filtered_bass", "saw_bass"]
+        bass_light = ["pluck_bass", "thin_bass", "bright_bass"]
         arp_choices = ["fm_bell", "fm_lead", "fm_brass"]
     elif prefer_fm is False:
-        # SNES-style: favor waveform synthesis + filtered tones
         lead_choices = ["square_lead", "pulse_lead", "triangle_lead", "saw_lead",
                         "pwm_lead", "filtered_lead"]
         harmony_choices = ["triangle_lead", "square_lead", "pulse_lead",
                            "supersaw_lead", "sweep_lead"]
-        bass_choices = ["triangle_bass", "sine_bass", "square_bass", "saw_bass",
-                        "filtered_bass"]
+        bass_heavy = ["triangle_bass", "sine_bass", "square_bass", "saw_bass",
+                      "filtered_bass"]
+        bass_medium = ["square_bass", "triangle_bass", "filtered_bass"]
+        bass_light = ["pluck_bass", "thin_bass", "bright_bass"]
         arp_choices = ["square_lead", "pulse_lead", "triangle_lead", "pwm_lead"]
     else:
         lead_choices = ["square_lead", "pulse_lead", "saw_lead", "fm_lead", "fm_bell",
                         "pwm_lead", "supersaw_lead", "fm_brass", "filtered_lead"]
         harmony_choices = ["triangle_lead", "square_lead", "fm_bell", "pulse_lead",
                            "fm_pad", "supersaw_lead", "sweep_lead", "fm_organ"]
-        bass_choices = ["saw_bass", "triangle_bass", "fm_bass", "sine_bass",
-                        "square_bass", "distorted_bass", "filtered_bass", "supersaw_bass"]
+        bass_heavy = ["saw_bass", "triangle_bass", "fm_bass", "sine_bass",
+                      "square_bass", "distorted_bass", "filtered_bass", "supersaw_bass"]
+        bass_medium = ["saw_bass", "fm_bass", "square_bass", "filtered_bass"]
+        bass_light = ["pluck_bass", "thin_bass", "bright_bass"]
         arp_choices = ["square_lead", "pulse_lead", "fm_bell", "triangle_lead",
                        "pwm_lead", "fm_brass"]
+
+    # Pick bass timbre based on weight
+    if bass_weight == "light":
+        bass_choices = bass_light
+    elif bass_weight == "medium":
+        bass_choices = bass_medium
+    else:
+        bass_choices = bass_heavy
 
     lead = random.choice(lead_choices)
     harmony = random.choice([h for h in harmony_choices if h != lead] or harmony_choices)
@@ -548,37 +561,62 @@ def _generate_counter_melody(scale_notes: list[int], chord_notes: list[int],
 
 
 def _generate_bass(root: int, chord_type: str,
-                   rows: int, style: str = "steady") -> list[tuple[int, int]]:
+                   rows: int, style: str = "steady",
+                   weight: str = "heavy") -> list[tuple[int, int]]:
     """Generate a bass line. Returns [(row, midi_note), ...]."""
-    # Bass in octave 2-3 (MIDI 36-59)
-    bass_root = root
-    while bass_root >= 48:
-        bass_root -= 12
-    while bass_root < 36:
-        bass_root += 12
+    # Register depends on weight
+    if weight == "light":
+        # Octave 3-4 (MIDI 48-71) — punchier, more melodic
+        bass_root = root
+        while bass_root >= 60:
+            bass_root -= 12
+        while bass_root < 48:
+            bass_root += 12
+    elif weight == "medium":
+        # Octave 3 (MIDI 42-59) — middle ground
+        bass_root = root
+        while bass_root >= 54:
+            bass_root -= 12
+        while bass_root < 42:
+            bass_root += 12
+    else:
+        # Octave 2-3 (MIDI 36-59) — deep and heavy
+        bass_root = root
+        while bass_root >= 48:
+            bass_root -= 12
+        while bass_root < 36:
+            bass_root += 12
 
     chord = theory.build_chord(bass_root, chord_type)
     notes = []
 
+    # Sparser step sizes for lighter weights
+    if weight == "light":
+        step_scale = 2  # half as many notes
+    elif weight == "medium":
+        step_scale = 1.5
+    else:
+        step_scale = 1
+
     if style == "steady":
-        # Play root on beats
-        for row in range(0, rows, 8):
+        step = int(8 * step_scale)
+        for row in range(0, rows, step):
             notes.append((row, bass_root))
     elif style == "octave":
-        # Alternate root and octave
-        for i, row in enumerate(range(0, rows, 4)):
+        step = int(4 * step_scale)
+        for i, row in enumerate(range(0, rows, step)):
             if i % 2 == 0:
                 notes.append((row, bass_root))
             else:
                 notes.append((row, bass_root + 12))
     elif style == "walking":
-        # Walk through chord tones
-        for i, row in enumerate(range(0, rows, 4)):
+        step = int(4 * step_scale)
+        for i, row in enumerate(range(0, rows, step)):
             note = chord[i % len(chord)]
             notes.append((row, note))
     elif style == "driving":
-        # Eighth note root
-        for row in range(0, rows, 2):
+        step = int(2 * step_scale)
+        for row in range(0, rows, step):
             notes.append((row, bass_root))
 
     return notes
@@ -756,7 +794,8 @@ def compose_song(seed: int | None = None, tempo_pref: str = "random",
                   drum_fills: bool = True, drum_swing: str = "off",
                   melody_style: str = "phrased",
                   harmony_voicing: str = "full",
-                  harmony_mode: str = "sustain") -> dict:
+                  harmony_mode: str = "sustain",
+                  bass_weight: str = "heavy") -> dict:
     """
     Compose a complete procedural song.
 
@@ -806,11 +845,11 @@ def compose_song(seed: int | None = None, tempo_pref: str = "random",
     # Pick instruments and build samples
     # Style preference influences instrument choice
     if style_pref == "genesis":
-        instruments = _pick_instruments(prefer_fm=True)
+        instruments = _pick_instruments(prefer_fm=True, bass_weight=bass_weight)
     elif style_pref == "snes":
-        instruments = _pick_instruments(prefer_fm=False)
+        instruments = _pick_instruments(prefer_fm=False, bass_weight=bass_weight)
     else:
-        instruments = _pick_instruments()
+        instruments = _pick_instruments(bass_weight=bass_weight)
     samples, sample_map = _build_samples(instruments)
 
     # Energy preference affects density and bass style
@@ -940,8 +979,14 @@ def compose_song(seed: int | None = None, tempo_pref: str = "random",
         # Use alternate progression for chorus sections
         section_prog = alt_progression if (use_alt_chorus and sec_type == "chorus") else progression
 
-        # Determine bass style per section energy
-        if section_energy < 0.5:
+        # Determine bass style per section energy and weight
+        if bass_weight == "light":
+            # Light bass avoids driving — keep it sparse
+            if section_energy > 0.85:
+                section_bass = random.choice(["steady", "walking"])
+            else:
+                section_bass = random.choice(["steady", "steady", "walking"])
+        elif section_energy < 0.5:
             section_bass = random.choice(["steady", "steady"])
         elif section_energy > 0.85:
             section_bass = random.choice(["driving", "octave", bass_style])
@@ -1063,17 +1108,31 @@ def compose_song(seed: int | None = None, tempo_pref: str = "random",
 
             # Bass — with optional portamento, style varies by section energy
             if layers["bass"]:
-                bass = _generate_bass(chord_root, chord_type, ROWS_PER_PATTERN, section_bass)
+                bass = _generate_bass(chord_root, chord_type, ROWS_PER_PATTERN, section_bass,
+                                      weight=bass_weight)
+                # Bass volume: heavy=full, medium=much softer, light=very pulled back
+                bass_vol = {"heavy": 255, "medium": 150, "light": 100}.get(bass_weight, 255)
                 if use_bass_porta and len(bass) > 1:
                     _apply_portamento(
                         pat, CH_BASS, bass, sample_map["bass"],
-                        volume=255, porta_speed=porta_speed, humanize=False,
+                        volume=bass_vol, porta_speed=porta_speed, humanize=False,
                     )
                 else:
                     _apply_notes_to_pattern(
                         pat, CH_BASS, bass, sample_map["bass"],
+                        volume=bass_vol if bass_vol < 255 else 255,
                         humanize=True,
                     )
+                # Note cuts for lighter bass — shorten sustain so bass doesn't fill space
+                if bass_weight in ("light", "medium"):
+                    # Light: cut after 2 rows (staccato), Medium: cut after 4 rows
+                    cut_after = 2 if bass_weight == "light" else 4
+                    for row, _ in bass:
+                        cut_row = row + cut_after
+                        if cut_row < ROWS_PER_PATTERN:
+                            # Only insert cut if the row is empty (don't overwrite next note)
+                            if pat.data[cut_row][CH_BASS].note == 0:
+                                pat.data[cut_row][CH_BASS] = ITNote(note=NOTE_CUT)
 
             # Arpeggio — humanized velocity for groove
             if layers["arp"]:
@@ -1160,6 +1219,7 @@ def compose_song(seed: int | None = None, tempo_pref: str = "random",
         "tempo": tempo,
         "speed": speed,
         "bass_style": bass_style,
+        "bass_weight": bass_weight,
         "arp_style": arp_style,
         "melody_density": round(melody_density, 2),
         "melody_style": melody_style,
@@ -1197,14 +1257,16 @@ def compose_and_save(filepath: str, seed: int | None = None,
                      drum_swing: str = "off",
                      melody_style: str = "phrased",
                      harmony_voicing: str = "full",
-                     harmony_mode: str = "sustain") -> dict:
+                     harmony_mode: str = "sustain",
+                     bass_weight: str = "heavy") -> dict:
     """Compose a song and save it as an IT file. Returns song info."""
     song = compose_song(seed=seed, tempo_pref=tempo, energy_pref=energy,
                         scale_pref=scale, style_pref=style,
                         drum_density=drum_density, drum_fills=drum_fills,
                         drum_swing=drum_swing, melody_style=melody_style,
                         harmony_voicing=harmony_voicing,
-                        harmony_mode=harmony_mode)
+                        harmony_mode=harmony_mode,
+                        bass_weight=bass_weight)
     write_it_file(
         filepath=filepath,
         song_name=song["name"],

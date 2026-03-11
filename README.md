@@ -66,22 +66,25 @@ bitcomposer -s 42 -o seed42.it
 # Harmony
 --harmony-voicing thin|full
 --harmony-mode stabs|sustain|rhythmic
+
+# Bass
+--bass-weight heavy|medium|light
 ```
 
 ### Example Presets
 
 ```bash
-# Genesis boss fight
-bitcomposer -v -o boss.it --tempo fast --energy intense --style genesis --drum-density busy --swing heavy --harmony-mode rhythmic
+# Genesis boss fight — heavy, aggressive
+bitcomposer -v -o boss.it --tempo fast --energy intense --style genesis --drum-density busy --swing heavy --harmony-mode rhythmic --bass-weight heavy
 
-# Chill exploration
-bitcomposer -v -o chill.it --tempo slow --energy chill --scale pentatonic --style snes --drum-density sparse --no-fills --swing light
+# Chill exploration — light, airy
+bitcomposer -v -o chill.it --tempo slow --energy chill --scale pentatonic --style snes --drum-density sparse --no-fills --swing light --bass-weight light
 
-# Dark dungeon
-bitcomposer -v -o dungeon.it --tempo slow --energy chill --scale minor --drum-density sparse --no-fills --harmony-voicing thin --harmony-mode stabs
+# Dark dungeon — medium, atmospheric
+bitcomposer -v -o dungeon.it --tempo slow --energy chill --scale minor --drum-density sparse --no-fills --harmony-voicing thin --harmony-mode stabs --bass-weight medium
 
-# Credits roll
-bitcomposer -v -o credits.it --tempo slow --energy chill --scale major --style snes --drum-density sparse --no-fills
+# Credits roll — light, gentle
+bitcomposer -v -o credits.it --tempo slow --energy chill --scale major --style snes --drum-density sparse --no-fills --bass-weight light
 ```
 
 ## How It Works
@@ -93,7 +96,7 @@ bitcomposer -v -o credits.it --tempo slow --energy chill --scale major --style s
 5. **Compose layers**:
    - **Melody** — motif-based phrases with question-answer structure, vibrato, register variation
    - **Harmony** — 2-3 note chord voicings with tremolo, optional counter-melody in chorus/bridge
-   - **Bass** — root movement adapting style to section energy (steady → driving)
+   - **Bass** — root movement with weight control (heavy/medium/light affects register, volume, rhythm density, sustain, and sample selection)
    - **Arpeggio** — chord tones in patterns (up, down, up-down, random)
    - **Drums** — per-section patterns with fills at transitions, swing on hi-hats, crash on downbeats
 6. **Arrange** — energy curves scale volumes and density across sections (intro 50% → final chorus 100%), variable structure with multiple ending styles

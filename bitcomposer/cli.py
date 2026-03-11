@@ -103,6 +103,12 @@ def main():
         help="Harmony style: stabs, sustain (pad), or rhythmic (default: sustain)",
     )
     parser.add_argument(
+        "--bass-weight",
+        choices=["heavy", "medium", "light"],
+        default="heavy",
+        help="Bass weight: heavy (deep), medium (balanced), light (punchy/thin) (default: heavy)",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version=f"bitcomposer {__version__}",
@@ -136,7 +142,8 @@ def main():
                                        drum_swing=args.swing,
                                        melody_style=args.melody,
                                        harmony_voicing=args.harmony_voicing,
-                                       harmony_mode=args.harmony_mode)
+                                       harmony_mode=args.harmony_mode,
+                                       bass_weight=args.bass_weight)
         except Exception as e:
             print(f"Error generating song: {e}", file=sys.stderr)
             if args.verbose:
@@ -149,7 +156,7 @@ def main():
         if args.verbose:
             print(f"  Key:         {info['key']} {info['scale']}")
             print(f"  Tempo:       {info['tempo']} BPM (speed {info['speed']})")
-            print(f"  Bass:        {info['bass_style']}")
+            print(f"  Bass:        {info['bass_style']} ({info['bass_weight']})")
             print(f"  Arpeggio:    {info['arp_style']}")
             print(f"  Density:     {info['melody_density']}")
             print(f"  Melody:      {info['melody_style']} ({info['melody_contour']})")

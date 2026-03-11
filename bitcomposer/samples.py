@@ -208,6 +208,19 @@ def _lowpass(samples: list[float], cutoff_ratio: float = 0.3) -> list[float]:
     return out
 
 
+def _highpass(samples: list[float], cutoff_ratio: float = 0.3) -> list[float]:
+    """Simple one-pole high-pass filter. cutoff_ratio 0.0-1.0 (higher = thinner)."""
+    alpha = max(0.001, min(1.0, cutoff_ratio))
+    out = []
+    prev_in = 0.0
+    prev_out = 0.0
+    for s in samples:
+        prev_out = (1.0 - alpha) * (prev_out + s - prev_in)
+        prev_in = s
+        out.append(prev_out)
+    return out
+
+
 def _lowpass_sweep(samples: list[float], start: float = 0.05,
                    end: float = 0.8) -> list[float]:
     """Low-pass filter with sweeping cutoff — opens up over time."""
@@ -318,6 +331,51 @@ def distorted_bass(cycles: int = 4, drive: float = 4.0) -> tuple[bytes, int]:
     samples = _distort(raw, drive)
     # Roll off the harshest highs
     samples = _lowpass(samples, 0.5)
+    data = _pack_samples(_normalize(samples))
+    return data, length
+
+
+def pluck_bass_gen(cycles: int = 2) -> tuple[bytes, int]:
+    """Short plucky bass — filtered saw with fast decay and high-pass to thin lows."""
+    period = int(SAMPLE_RATE / BASE_NOTE_HZ)
+    length = period * cycles
+    raw = []
+    for i in range(length):
+        phase = (i % period) / period
+        # Quick amplitude decay
+        env = max(0.0, 1.0 - (i / length) * 1.5)
+        raw.append((2.0 * phase - 1.0) * env)
+    samples = _lowpass(raw, 0.4)
+    samples = _highpass(samples, 0.15)
+    data = _pack_samples(_normalize(samples))
+    return data, length
+
+
+def thin_bass_gen(cycles: int = 2) -> tuple[bytes, int]:
+    """Thin narrow-pulse bass — minimal low-end, sharp attack."""
+    period = int(SAMPLE_RATE / BASE_NOTE_HZ)
+    length = period * cycles
+    raw = []
+    for i in range(length):
+        phase = (i % period) / period
+        env = max(0.0, 1.0 - (i / length) * 1.2)
+        raw.append((1.0 if phase < 0.15 else -1.0) * env)
+    samples = _highpass(raw, 0.2)
+    data = _pack_samples(_normalize(samples))
+    return data, length
+
+
+def bright_bass_gen(cycles: int = 2) -> tuple[bytes, int]:
+    """Bright punchy bass — triangle with high-pass, almost mid-range."""
+    period = int(SAMPLE_RATE / BASE_NOTE_HZ)
+    length = period * cycles
+    raw = []
+    for i in range(length):
+        phase = (i % period) / period
+        env = max(0.0, 1.0 - (i / length) * 1.3)
+        tri = 4.0 * abs(phase - 0.5) - 1.0
+        raw.append(tri * env)
+    samples = _highpass(raw, 0.2)
     data = _pack_samples(_normalize(samples))
     return data, length
 
@@ -523,6 +581,10 @@ INSTRUMENT_PRESETS = {
     "distorted_bass": (distorted_bass, {},             62),
     "filtered_bass":  (filtered_saw,   {"cutoff": 0.2}, 64),
     "supersaw_bass":  (supersaw,       {"detune": 0.008}, 58),
+    # Bass — light (high-passed, short decay, minimal low-end)
+    "pluck_bass":     (pluck_bass_gen, {},              56),
+    "thin_bass":      (thin_bass_gen,  {},              52),
+    "bright_bass":    (bright_bass_gen, {},             50),
     # Drums — classic
     "kick":           (kick_drum,      {},             64),
     "snare":          (snare_drum,     {},             56),
