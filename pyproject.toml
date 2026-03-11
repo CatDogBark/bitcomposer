@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bitcomposer"
+version = "0.1.0"
+description = "Procedural 16-bit chiptune music generator — creates Impulse Tracker (.it) files"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "CatDogBark" },
+]
+keywords = ["chiptune", "tracker", "music", "procedural", "16-bit", "snes", "genesis", "impulse-tracker"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Multimedia :: Sound/Audio :: Sound Synthesis",
+]
+
+[project.scripts]
+bitcomposer = "bitcomposer.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/CatDogBark/bitcomposer"
+Repository = "https://github.com/CatDogBark/bitcomposer"
+Issues = "https://github.com/CatDogBark/bitcomposer/issues"
