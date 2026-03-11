@@ -110,6 +110,84 @@ DRUM_PATTERNS = [
     },
 ]
 
+# Sparse variants for intros/breakdowns (less busy)
+DRUM_PATTERNS_SPARSE = [
+    {
+        "kick":  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "snare": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "hat":   [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    },
+    {
+        "kick":  [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+        "snare": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "hat":   [1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0],
+    },
+]
+
+# Busy variants for choruses/intense sections
+DRUM_PATTERNS_BUSY = [
+    {
+        "kick":  [1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0],
+        "snare": [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0],
+        "hat":   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    },
+    {
+        "kick":  [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0],
+        "snare": [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1],
+        "hat":   [1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1],
+    },
+]
+
+# Fill patterns (16 steps) — played at section transitions
+DRUM_FILLS = [
+    {  # Snare roll
+        "kick":  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+        "snare": [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1],
+        "hat":   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "tom":   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "crash": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    },
+    {  # Tom cascade
+        "kick":  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+        "snare": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+        "hat":   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "tom":   [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1],
+        "crash": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    },
+    {  # Build to crash
+        "kick":  [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+        "snare": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1],
+        "hat":   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "tom":   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "crash": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+    },
+    {  # Kick snare flurry
+        "kick":  [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0],
+        "snare": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1],
+        "hat":   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "tom":   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "crash": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    },
+]
+
+
+def random_drum_fill() -> dict[str, list[int]]:
+    """Pick a random drum fill pattern."""
+    return random.choice(DRUM_FILLS)
+
+
+def random_drum_pattern_for_section(section: str, base_pattern: dict,
+                                     density: str = "normal") -> dict:
+    """Pick a drum pattern appropriate for the section and density."""
+    if density == "sparse" or section in ("intro", "outro"):
+        return random.choice(DRUM_PATTERNS_SPARSE)
+    elif density == "busy" or section == "chorus":
+        return random.choice(DRUM_PATTERNS_BUSY)
+    elif section == "bridge":
+        # Bridge can go either way
+        return random.choice([base_pattern] + DRUM_PATTERNS_SPARSE)
+    return base_pattern
+
 
 def note_name(midi_note: int) -> str:
     """Convert MIDI note number to name like C-5, D#3."""
@@ -180,6 +258,27 @@ def random_progression(scale_name: str) -> list[tuple[int, str]]:
     """Pick a random chord progression for the given scale."""
     progs = PROGRESSIONS.get(scale_name, PROGRESSIONS["natural_minor"])
     return random.choice(progs)
+
+
+def random_alternate_progression(scale_name: str,
+                                  main_prog: list[tuple[int, str]]) -> list[tuple[int, str]]:
+    """Pick an alternate progression different from the main one, for verse/chorus contrast."""
+    progs = PROGRESSIONS.get(scale_name, PROGRESSIONS["natural_minor"])
+    alternates = [p for p in progs if p != main_prog]
+    if alternates:
+        return random.choice(alternates)
+    # If no alternate, rotate the main progression
+    return main_prog[1:] + main_prog[:1]
+
+
+def passing_chord(chord_root: int, next_root: int, chord_type: str) -> tuple[int, str]:
+    """Generate a passing/transitional chord between two chord roots."""
+    # Chromatic approach: half step below the target
+    if abs(next_root - chord_root) > 2:
+        passing_root = next_root - 1 if next_root > chord_root else next_root + 1
+        return (passing_root, "dim")  # Diminished passing chord
+    # Otherwise use a sus4 on the current root
+    return (chord_root, "sus4")
 
 
 def random_drum_pattern() -> dict[str, list[int]]:

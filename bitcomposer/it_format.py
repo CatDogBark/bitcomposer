@@ -119,6 +119,16 @@ def midi_to_it_note(midi_note: int) -> int:
 NOTE_CUT = 254
 NOTE_OFF = 255
 
+# IT effect commands (letter = number)
+FX_SET_SPEED = 1       # Axx - set speed (ticks per row)
+FX_VOLUME_SLIDE = 4    # Dxy - volume slide (x=up, y=down)
+FX_PITCH_DOWN = 5      # Exx - pitch slide down
+FX_PITCH_UP = 6        # Fxx - pitch slide up
+FX_PORTAMENTO = 7      # Gxx - tone portamento (slide to note)
+FX_VIBRATO = 8         # Hxy - vibrato (x=speed, y=depth)
+FX_TREMOLO = 18        # Rxy - tremolo (x=speed, y=depth)
+FX_SET_TEMPO = 20      # Txx - set tempo (BPM)
+
 
 def write_it_file(
     filepath: str,

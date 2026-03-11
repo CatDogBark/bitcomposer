@@ -44,6 +44,65 @@ def main():
         help="Show detailed info about generated songs",
     )
     parser.add_argument(
+        "--tempo",
+        choices=["slow", "medium", "fast", "random"],
+        default="random",
+        help="Tempo preference (default: random)",
+    )
+    parser.add_argument(
+        "--energy",
+        choices=["chill", "normal", "intense", "random"],
+        default="random",
+        help="Energy/density level (default: random)",
+    )
+    parser.add_argument(
+        "--scale",
+        choices=["minor", "major", "pentatonic", "random"],
+        default="random",
+        help="Scale preference (default: random)",
+    )
+    parser.add_argument(
+        "--style",
+        choices=["snes", "genesis", "random"],
+        default="random",
+        help="Sound style (default: random)",
+    )
+    parser.add_argument(
+        "--drum-density",
+        choices=["sparse", "normal", "busy"],
+        default="normal",
+        help="Drum pattern density (default: normal)",
+    )
+    parser.add_argument(
+        "--no-fills",
+        action="store_true",
+        help="Disable drum fills at section transitions",
+    )
+    parser.add_argument(
+        "--swing",
+        choices=["off", "light", "heavy"],
+        default="off",
+        help="Swing feel on hi-hats (default: off)",
+    )
+    parser.add_argument(
+        "--melody",
+        choices=["simple", "phrased"],
+        default="phrased",
+        help="Melody style: simple (random walk) or phrased (motif-based) (default: phrased)",
+    )
+    parser.add_argument(
+        "--harmony-voicing",
+        choices=["thin", "full"],
+        default="full",
+        help="Harmony voicing: thin (1 note) or full (2-3 note chords) (default: full)",
+    )
+    parser.add_argument(
+        "--harmony-mode",
+        choices=["stabs", "sustain", "rhythmic"],
+        default="sustain",
+        help="Harmony style: stabs, sustain (pad), or rhythmic (default: sustain)",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version=f"bitcomposer {__version__}",
@@ -69,7 +128,15 @@ def main():
             )
 
         try:
-            info = compose_and_save(filepath, seed=seed)
+            info = compose_and_save(filepath, seed=seed,
+                                       tempo=args.tempo, energy=args.energy,
+                                       scale=args.scale, style=args.style,
+                                       drum_density=args.drum_density,
+                                       drum_fills=not args.no_fills,
+                                       drum_swing=args.swing,
+                                       melody_style=args.melody,
+                                       harmony_voicing=args.harmony_voicing,
+                                       harmony_mode=args.harmony_mode)
         except Exception as e:
             print(f"Error generating song: {e}", file=sys.stderr)
             if args.verbose:
@@ -85,6 +152,15 @@ def main():
             print(f"  Bass:        {info['bass_style']}")
             print(f"  Arpeggio:    {info['arp_style']}")
             print(f"  Density:     {info['melody_density']}")
+            print(f"  Melody:      {info['melody_style']} ({info['melody_contour']})")
+            print(f"  Harmony:     {info['harmony_voicing']} / {info['harmony_mode']}")
+            if info.get('chorus_modulated'):
+                print(f"  Modulation:  chorus +1 semitone")
+            if info.get('chorus_alt_prog'):
+                print(f"  Chorus prog: alternate")
+            print(f"  Ending:      {info['ending_style']}")
+            if info.get('alt_lead'):
+                print(f"  Alt lead:    {info['alt_lead']}")
             print(f"  Patterns:    {info['num_patterns']}")
             print(f"  Orders:      {info['num_orders']}")
             print(f"  Instruments: {', '.join(info['instruments'].values())}")
