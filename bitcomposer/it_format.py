@@ -141,6 +141,7 @@ def write_it_file(
     global_volume: int = 128,
     mix_volume: int = 80,
     num_channels: int = 8,
+    channel_volumes: list[int] | None = None,
 ) -> None:
     """Write a complete .it module file."""
 
@@ -229,7 +230,10 @@ def write_it_file(
 
     # Channel volume (64 bytes)
     for ch in range(64):
-        f.append(64 if ch < num_channels else 0)
+        if ch < num_channels and channel_volumes:
+            f.append(max(0, min(64, channel_volumes[ch])))
+        else:
+            f.append(64 if ch < num_channels else 0)
 
     assert len(f) == 192, f"Header should be 192 bytes, got {len(f)}"
 

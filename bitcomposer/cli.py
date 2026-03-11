@@ -69,9 +69,9 @@ def main():
     )
     parser.add_argument(
         "--drum-density",
-        choices=["sparse", "normal", "busy"],
-        default="normal",
-        help="Drum pattern density (default: normal)",
+        choices=["sparse", "normal", "busy", "random"],
+        default="random",
+        help="Drum pattern density (default: random)",
     )
     parser.add_argument(
         "--no-fills",
@@ -80,33 +80,33 @@ def main():
     )
     parser.add_argument(
         "--swing",
-        choices=["off", "light", "heavy"],
-        default="off",
-        help="Swing feel on hi-hats (default: off)",
+        choices=["off", "light", "heavy", "random"],
+        default="random",
+        help="Swing feel on hi-hats (default: random)",
     )
     parser.add_argument(
         "--melody",
-        choices=["simple", "phrased"],
-        default="phrased",
-        help="Melody style: simple (random walk) or phrased (motif-based) (default: phrased)",
+        choices=["simple", "phrased", "random"],
+        default="random",
+        help="Melody style: simple (random walk) or phrased (motif-based) (default: random)",
     )
     parser.add_argument(
         "--harmony-voicing",
-        choices=["thin", "full"],
-        default="full",
-        help="Harmony voicing: thin (1 note) or full (2-3 note chords) (default: full)",
+        choices=["thin", "full", "random"],
+        default="random",
+        help="Harmony voicing: thin (1 note) or full (2-3 note chords) (default: random)",
     )
     parser.add_argument(
         "--harmony-mode",
-        choices=["stabs", "sustain", "rhythmic"],
-        default="sustain",
-        help="Harmony style: stabs, sustain (pad), or rhythmic (default: sustain)",
+        choices=["stabs", "sustain", "rhythmic", "random"],
+        default="random",
+        help="Harmony style: stabs, sustain (pad), or rhythmic (default: random)",
     )
     parser.add_argument(
         "--bass-weight",
-        choices=["heavy", "medium", "light"],
-        default="heavy",
-        help="Bass weight: heavy (deep), medium (balanced), light (punchy/thin) (default: heavy)",
+        choices=["heavy", "medium", "light", "random"],
+        default="random",
+        help="Bass weight: heavy (deep), medium (balanced), light (punchy/thin) (default: random)",
     )
     parser.add_argument(
         "--form",

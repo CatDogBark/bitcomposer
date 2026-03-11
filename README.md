@@ -7,10 +7,11 @@ The generated music is inspired by the SNES and Sega Genesis era — FM synthesi
 ## Features
 
 - **Motif-based melody** — phrase structure with contour shaping (arch, climb, valley, etc.), question-answer phrasing, and chorus callbacks so the hook comes back
-- **Full harmony** — 2-3 note chord voicings across 3 channels, counter-melody generation, sustain/stabs/rhythmic modes
+- **Full harmony** — 2-3 note chord voicings across 3 channels, counter-melody generation, sustain/stabs/rhythmic modes, voiced in a lower octave to sit behind the melody
+- **Mix mastering** — per-channel global volumes baked into the IT header so melody leads and harmony/drums sit in the background naturally, with volume decay slides on sustained notes
 - **Dynamic arrangement** — energy curves across sections, gradual texture build, variable structure (tag/abrupt/fadeout endings, double bridges), instrument swaps between sections
 - **Extended synthesis** — 30+ instrument presets: classic waveforms (square, saw, triangle), multi-operator FM (organ, brass, pad), PWM sweep, supersaw, filtered/distorted bass, layered drums with reverb tails
-- **IT effects** — vibrato, portamento, tremolo, volume slides, velocity humanization
+- **IT effects** — vibrato, portamento, tremolo, volume slides, velocity humanization, note-cut control on melody and harmony
 - **Drum system** — 6 drum channels, per-section pattern selection, fill patterns at transitions, swing/shuffle, sparse/busy density variants
 - **Music theory** — 8 scales, 20+ chord progressions, 7 chord types, progression variation between sections, key modulation (chorus up a semitone)
 - **12-channel output** — melody, 3 harmony, bass, arp, kick, snare, hihat, tom, crash, open hihat
@@ -46,6 +47,8 @@ bitcomposer -n 5 -d ~/Music/Chiptune/
 bitcomposer -s 42 -o seed42.it
 ```
 
+All style options default to `random`, so running `bitcomposer -o song.it` with no flags will randomize everything for maximum variety.
+
 ### Style Options
 
 ```bash
@@ -56,19 +59,19 @@ bitcomposer -s 42 -o seed42.it
 --style snes|genesis|random
 
 # Drums
---drum-density sparse|normal|busy
+--drum-density sparse|normal|busy|random
 --no-fills
---swing off|light|heavy
+--swing off|light|heavy|random
 
 # Melody
---melody simple|phrased
+--melody simple|phrased|random
 
 # Harmony
---harmony-voicing thin|full
---harmony-mode stabs|sustain|rhythmic
+--harmony-voicing thin|full|random
+--harmony-mode stabs|sustain|rhythmic|random
 
 # Bass
---bass-weight heavy|medium|light
+--bass-weight heavy|medium|light|random
 
 # Song Form
 --form standard|aaba|rondo|short|linear|random
@@ -109,13 +112,14 @@ Each form has its own energy curve. Endings are randomly chosen (fadeout, tag, o
 3. **Generate motifs** — creates rhythmic+melodic templates with contour shapes that repeat and vary across sections, giving the melody recognizable phrases
 4. **Select instruments** — picks from 30+ synthesized presets based on style preference (SNES waveforms vs Genesis FM), with alternate lead for later sections
 5. **Compose layers**:
-   - **Melody** — motif-based phrases with question-answer structure, vibrato, register variation
-   - **Harmony** — 2-3 note chord voicings with tremolo, optional counter-melody in chorus/bridge
+   - **Melody** — motif-based phrases with question-answer structure, vibrato, register variation, note-cuts and volume decay to prevent droning
+   - **Harmony** — 2-3 note chord voicings in a lower octave with volume decay, optional counter-melody in chorus/bridge
    - **Bass** — root movement with weight control (heavy/medium/light affects register, volume, rhythm density, sustain, and sample selection)
    - **Arpeggio** — chord tones in patterns (up, down, up-down, random)
    - **Drums** — per-section patterns with fills at transitions, swing on hi-hats, crash on downbeats
 6. **Arrange** — energy curves scale volumes and density across sections (intro 50% → final chorus 100%), variable structure with multiple ending styles
-7. **Write** — outputs a valid 12-channel Impulse Tracker module file
+7. **Master** — per-channel volume mixing (melody at full, harmony pushed back, drums balanced), volume decay on sustained notes
+8. **Write** — outputs a valid 12-channel Impulse Tracker module file
 
 ## License
 
