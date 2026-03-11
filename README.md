@@ -69,23 +69,38 @@ bitcomposer -s 42 -o seed42.it
 
 # Bass
 --bass-weight heavy|medium|light
+
+# Song Form
+--form standard|aaba|rondo|short|linear|random
 ```
 
 ### Example Presets
 
 ```bash
 # Genesis boss fight — heavy, aggressive
-bitcomposer -v -o boss.it --tempo fast --energy intense --style genesis --drum-density busy --swing heavy --harmony-mode rhythmic --bass-weight heavy
+bitcomposer -v -o boss.it --tempo fast --energy intense --style genesis --drum-density busy --swing heavy --harmony-mode rhythmic --bass-weight heavy --form short
 
 # Chill exploration — light, airy
-bitcomposer -v -o chill.it --tempo slow --energy chill --scale pentatonic --style snes --drum-density sparse --no-fills --swing light --bass-weight light
+bitcomposer -v -o chill.it --tempo slow --energy chill --scale pentatonic --style snes --drum-density sparse --no-fills --swing light --bass-weight light --form aaba
 
 # Dark dungeon — medium, atmospheric
-bitcomposer -v -o dungeon.it --tempo slow --energy chill --scale minor --drum-density sparse --no-fills --harmony-voicing thin --harmony-mode stabs --bass-weight medium
+bitcomposer -v -o dungeon.it --tempo slow --energy chill --scale minor --drum-density sparse --no-fills --harmony-voicing thin --harmony-mode stabs --bass-weight medium --form rondo
 
 # Credits roll — light, gentle
-bitcomposer -v -o credits.it --tempo slow --energy chill --scale major --style snes --drum-density sparse --no-fills --bass-weight light
+bitcomposer -v -o credits.it --tempo slow --energy chill --scale major --style snes --drum-density sparse --no-fills --bass-weight light --form linear
 ```
+
+## Song Forms
+
+Five song forms control the high-level architecture:
+
+- **standard** — intro → verse → chorus → verse → chorus → bridge → chorus → outro (classic pop/game structure, optional double bridge)
+- **aaba** — intro → verse → verse → bridge → verse → outro (no chorus, classic pop/jazz feel, sometimes doubles the form)
+- **rondo** — intro → theme → episode → theme → episode → theme → outro (main theme returns between contrasting sections)
+- **short** — 2-3 sections with no intro/outro (compact, great for game level music)
+- **linear** — intro → 4-6 unique sections → outro (through-composed, no repeats, RPG/adventure feel)
+
+Each form has its own energy curve. Endings are randomly chosen (fadeout, tag, or abrupt), with short forms skipping tag endings.
 
 ## How It Works
 

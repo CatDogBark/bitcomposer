@@ -109,6 +109,12 @@ def main():
         help="Bass weight: heavy (deep), medium (balanced), light (punchy/thin) (default: heavy)",
     )
     parser.add_argument(
+        "--form",
+        choices=["standard", "aaba", "rondo", "short", "linear", "random"],
+        default="random",
+        help="Song form (default: random)",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version=f"bitcomposer {__version__}",
@@ -143,7 +149,8 @@ def main():
                                        melody_style=args.melody,
                                        harmony_voicing=args.harmony_voicing,
                                        harmony_mode=args.harmony_mode,
-                                       bass_weight=args.bass_weight)
+                                       bass_weight=args.bass_weight,
+                                       song_form=args.form)
         except Exception as e:
             print(f"Error generating song: {e}", file=sys.stderr)
             if args.verbose:
@@ -165,6 +172,7 @@ def main():
                 print(f"  Modulation:  chorus +1 semitone")
             if info.get('chorus_alt_prog'):
                 print(f"  Chorus prog: alternate")
+            print(f"  Form:        {info['song_form']}")
             print(f"  Ending:      {info['ending_style']}")
             if info.get('alt_lead'):
                 print(f"  Alt lead:    {info['alt_lead']}")
