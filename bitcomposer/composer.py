@@ -15,25 +15,21 @@ from .it_format import (
     write_it_file,
     FX_VIBRATO, FX_PORTAMENTO, FX_VOLUME_SLIDE, FX_TREMOLO, FX_SET_TEMPO,
 )
-
-
-# Channel assignments
-CH_MELODY = 0
-CH_HARMONY = 1
-CH_HARMONY2 = 2
-CH_HARMONY3 = 3
-CH_BASS = 4
-CH_ARP = 5
-CH_KICK = 6
-CH_SNARE = 7
-CH_HIHAT = 8
-CH_TOM = 9
-CH_CRASH = 10
-CH_OPEN_HAT = 11
-
-NUM_CHANNELS = 12
-ROWS_PER_PATTERN = 64
-STEPS_PER_ROW = 4  # 16 steps = 64 rows / 4 rows per step
+from .pattern import (
+    CH_MELODY, CH_HARMONY, CH_HARMONY2, CH_HARMONY3, CH_BASS, CH_ARP,
+    CH_KICK, CH_SNARE, CH_HIHAT, CH_TOM, CH_CRASH, CH_OPEN_HAT,
+    NUM_CHANNELS, ROWS_PER_PATTERN, STEPS_PER_ROW,
+    humanize_volume, apply_notes_to_pattern, apply_vibrato,
+    apply_portamento, apply_harmony_fade, apply_fade,
+    apply_drums_to_pattern, generate_drums,
+    apply_sustain_safety_net, silence_inactive_channels,
+)
+from .melody import (
+    generate_motif, vary_motif, generate_melody,
+    generate_counter_melody, add_melody_cuts,
+)
+from .harmony import generate_harmony
+from .bass import generate_bass, generate_arpeggio, pick_section_bass
 
 
 def _pick_instruments(prefer_fm: bool | None = None,
@@ -133,728 +129,6 @@ def _build_samples(instruments: dict[str, str]) -> list[ITSample]:
     return samples, sample_map
 
 
-def _generate_melody_simple(scale_notes: list[int], chord_notes: list[int],
-                            rows: int, density: float = 0.5) -> list[tuple[int, int]]:
-    """Generate a simple random-walk melody. Returns [(row, midi_note), ...]."""
-    notes = []
-    melody_notes = [n for n in scale_notes if 60 <= n <= 83]
-    if not melody_notes:
-        melody_notes = [n + 12 for n in scale_notes if 48 <= n <= 71]
-    if not melody_notes:
-        return notes
-
-    chord_in_range = [n for n in chord_notes if n in melody_notes]
-    current = random.choice(chord_in_range) if chord_in_range else random.choice(melody_notes)
-
-    row = 0
-    while row < rows:
-        if random.random() < density:
-            idx = melody_notes.index(current) if current in melody_notes else 0
-            step = random.choices([-2, -1, 0, 1, 2], weights=[10, 25, 15, 25, 10], k=1)[0]
-            new_idx = max(0, min(len(melody_notes) - 1, idx + step))
-            current = melody_notes[new_idx]
-            if random.random() < 0.2 and chord_in_range:
-                current = random.choice(chord_in_range)
-            duration = random.choice([2, 4, 4, 4, 8])
-            notes.append((row, current))
-            row += duration
-        else:
-            row += random.choice([2, 4])
-
-    return notes
-
-
-# ── Motif-based melody system ──
-
-# Rhythmic templates: list of row offsets within a 32-row half-phrase
-RHYTHM_TEMPLATES = [
-    [0, 4, 8, 12],                     # Quarter notes
-    [0, 4, 8, 14],                     # Dotted ending
-    [0, 4, 6, 8, 12],                  # Eighth note pickup
-    [0, 2, 8, 12, 16],                 # Syncopated
-    [0, 8, 12, 14],                    # Long-short-short
-    [0, 4, 8, 10, 12],                 # Running then rest
-    [0, 6, 8, 12, 14],                 # Off-beat accent
-    [0, 4, 12, 14, 16],               # Gap then flurry
-]
-
-# Contour shapes: relative direction for each note in a motif
-# Values are scale steps from starting note — wider intervals = more melodic movement
-CONTOURS = {
-    # Cumulative: each value is a step from current position
-    "arch":        [0, 2, 2, -2, -2],       # Rise then fall
-    "descent":     [0, -1, -2, -2, 1],      # Stepwise fall, partial recover
-    "climb":       [0, 1, 2, 2, -1],        # Gradual rise, step back
-    "valley":      [0, -2, -2, 2, 2],       # Dip then return
-    "leap_return": [0, 4, -1, -1, -2],      # Big jump, walk back down
-    "zigzag":      [0, 3, -4, 3, -2],       # Alternating leaps
-    "cascade":     [0, -3, 2, -3, 1],       # Falling with rebounds
-    "soar":        [0, 2, 3, 1, -2],        # Big climb then relax
-}
-
-
-def _generate_motif(length: int = 4) -> dict:
-    """Generate a rhythmic+melodic motif template."""
-    rhythm = random.choice(RHYTHM_TEMPLATES)
-    # Trim or extend to match length
-    if len(rhythm) > length:
-        rhythm = rhythm[:length]
-    elif len(rhythm) < length:
-        # Add notes at end
-        last = rhythm[-1]
-        while len(rhythm) < length:
-            last += random.choice([2, 4])
-            rhythm.append(last)
-
-    contour_name = random.choice(list(CONTOURS.keys()))
-    contour = CONTOURS[contour_name]
-
-    # Scale contour to motif length
-    if len(contour) != len(rhythm):
-        # Interpolate contour to match rhythm length
-        scaled = []
-        for i in range(len(rhythm)):
-            src = i * (len(contour) - 1) / max(1, len(rhythm) - 1)
-            lo = int(src)
-            hi = min(lo + 1, len(contour) - 1)
-            frac = src - lo
-            val = contour[lo] * (1 - frac) + contour[hi] * frac
-            scaled.append(round(val))
-        contour = scaled
-
-    return {
-        "rhythm": rhythm,
-        "contour": contour,
-        "contour_name": contour_name,
-    }
-
-
-def _vary_motif(motif: dict, amount: float = 0.3) -> dict:
-    """Create a variation of a motif — small rhythmic/melodic changes."""
-    rhythm = list(motif["rhythm"])
-    contour = list(motif["contour"])
-
-    for i in range(len(rhythm)):
-        if random.random() < amount:
-            # Slight rhythmic shift
-            rhythm[i] = max(0, rhythm[i] + random.choice([-2, 0, 2]))
-
-    for i in range(len(contour)):
-        if random.random() < amount:
-            contour[i] += random.choice([-1, 0, 1])
-
-    # Keep rhythm sorted and non-negative
-    rhythm.sort()
-    rhythm[0] = 0
-
-    return {"rhythm": rhythm, "contour": contour, "contour_name": motif["contour_name"]}
-
-
-def _realize_motif(motif: dict, scale_notes: list[int],
-                   chord_notes: list[int], start_row: int,
-                   start_note_idx: int, resolve_to_chord: bool = False,
-                   rows: int = 64) -> tuple[list[tuple[int, int]], int]:
-    """
-    Realize a motif into actual notes.
-
-    Returns (note_list, ending_note_idx) where note_list is [(row, midi_note), ...].
-    If resolve_to_chord is True, the last note snaps to a chord tone.
-    """
-    melody_notes = [n for n in scale_notes if 60 <= n <= 83]
-    if not melody_notes:
-        melody_notes = [n + 12 for n in scale_notes if 48 <= n <= 71]
-    if not melody_notes:
-        return [], start_note_idx
-
-    chord_in_range = [n for n in chord_notes if n in melody_notes]
-
-    notes = []
-    current_idx = max(0, min(len(melody_notes) - 1, start_note_idx))
-
-    for i, (row_offset, direction) in enumerate(zip(motif["rhythm"], motif["contour"])):
-        row = start_row + row_offset
-        if row >= rows:
-            break
-
-        # Contour is cumulative — each step moves from current position
-        target_idx = current_idx + direction
-        target_idx = max(0, min(len(melody_notes) - 1, target_idx))
-
-        # If we hit a boundary and would repeat the same note, nudge the other way
-        if target_idx == current_idx and direction != 0:
-            nudge = 1 if current_idx < len(melody_notes) // 2 else -1
-            target_idx = max(0, min(len(melody_notes) - 1, current_idx + nudge))
-
-        # Last note: resolve to chord tone if requested
-        if resolve_to_chord and i == len(motif["rhythm"]) - 1 and chord_in_range:
-            # Find nearest chord tone
-            closest = min(chord_in_range, key=lambda n: abs(melody_notes.index(n) - target_idx)
-                         if n in melody_notes else 999)
-            if closest in melody_notes:
-                target_idx = melody_notes.index(closest)
-
-        current_idx = target_idx
-        notes.append((row, melody_notes[current_idx]))
-
-    return notes, current_idx
-
-
-def _generate_melody_phrased(scale_notes: list[int], chord_notes: list[int],
-                              rows: int, density: float = 0.5,
-                              motif: dict | None = None,
-                              is_answer: bool = False) -> list[tuple[int, int]]:
-    """
-    Generate a melody using motif-based phrase structure.
-
-    Uses question-answer phrasing: first half is the "question" (ends on tension),
-    second half is the "answer" (resolves to chord tone).
-    """
-    melody_notes = [n for n in scale_notes if 60 <= n <= 83]
-    if not melody_notes:
-        melody_notes = [n + 12 for n in scale_notes if 48 <= n <= 71]
-    if not melody_notes:
-        return []
-
-    if motif is None:
-        motif = _generate_motif(length=random.choice([4, 5]))
-
-    chord_in_range = [n for n in chord_notes if n in melody_notes]
-
-    # Pick starting note — vary the register to avoid always landing on same note
-    # Spread across the range: sometimes start high, sometimes low
-    range_third = len(melody_notes) // 3
-    register = random.choice(["low", "mid", "high"])
-    if register == "low":
-        candidates = melody_notes[:range_third + 1]
-    elif register == "high":
-        candidates = melody_notes[-(range_third + 1):]
-    else:
-        candidates = melody_notes[range_third:2 * range_third + 1]
-
-    # Prefer chord tones within the chosen register
-    register_chord = [n for n in chord_in_range if n in candidates]
-    if register_chord:
-        start_note = random.choice(register_chord)
-    elif candidates:
-        start_note = random.choice(candidates)
-    else:
-        start_note = random.choice(melody_notes)
-    start_idx = melody_notes.index(start_note)
-
-    all_notes = []
-    half = rows // 2
-
-    # Question phrase: first half, doesn't resolve
-    q_motif = motif if not is_answer else _vary_motif(motif, 0.2)
-    q_notes, end_idx = _realize_motif(
-        q_motif, scale_notes, chord_notes,
-        start_row=0, start_note_idx=start_idx,
-        resolve_to_chord=False, rows=half,
-    )
-    all_notes.extend(q_notes)
-
-    # Rest gap between phrases (density-dependent)
-    gap = 4 if density > 0.5 else 8
-
-    # Answer phrase: second half, resolves to chord tone
-    a_motif = _vary_motif(motif, 0.3)
-    a_notes, _ = _realize_motif(
-        a_motif, scale_notes, chord_notes,
-        start_row=half + gap, start_note_idx=end_idx,
-        resolve_to_chord=True, rows=rows,
-    )
-    all_notes.extend(a_notes)
-
-    # Add passing tones between phrases based on density
-    if density > 0.5 and len(all_notes) > 0:
-        # Fill sparse gaps with occasional passing notes
-        filled = list(all_notes)
-        for i in range(len(all_notes) - 1):
-            row_a, note_a = all_notes[i]
-            row_b, note_b = all_notes[i + 1]
-            gap_rows = row_b - row_a
-            if gap_rows >= 8 and random.random() < density - 0.3:
-                # Insert a passing note halfway
-                mid_row = row_a + gap_rows // 2
-                if note_a in melody_notes and note_b in melody_notes:
-                    idx_a = melody_notes.index(note_a)
-                    idx_b = melody_notes.index(note_b)
-                    mid_idx = (idx_a + idx_b) // 2
-                    mid_idx = max(0, min(len(melody_notes) - 1, mid_idx))
-                    filled.append((mid_row, melody_notes[mid_idx]))
-        all_notes = sorted(filled, key=lambda x: x[0])
-
-    return all_notes
-
-
-def _add_melody_cuts(notes: list[tuple[int, int]], rows: int,
-                     max_sustain: int = 8) -> list[tuple[int, int]]:
-    """Add note-cut events to melody so notes don't ring indefinitely.
-
-    Each note gets a cut after max_sustain rows, unless the next note
-    arrives sooner (which naturally replaces it).
-    """
-    if not notes:
-        return notes
-    result = []
-    sorted_notes = sorted(notes, key=lambda x: x[0])
-    for i, (row, midi_note) in enumerate(sorted_notes):
-        result.append((row, midi_note))
-        # Find when the next note starts
-        next_row = sorted_notes[i + 1][0] if i + 1 < len(sorted_notes) else rows
-        gap = next_row - row
-        # Only add cut if the note would ring longer than max_sustain
-        if gap > max_sustain:
-            cut_row = row + max_sustain
-            if cut_row < rows:
-                result.append((cut_row, -1))
-    return result
-
-
-def _generate_melody(scale_notes: list[int], chord_notes: list[int],
-                     rows: int, density: float = 0.5,
-                     motif: dict | None = None,
-                     is_answer: bool = False,
-                     phrased: bool = True) -> list[tuple[int, int]]:
-    """Generate a melody line. Returns [(row, midi_note), ...]."""
-    if phrased:
-        notes = _generate_melody_phrased(
-            scale_notes, chord_notes, rows, density, motif, is_answer)
-    else:
-        notes = _generate_melody_simple(scale_notes, chord_notes, rows, density)
-    return _add_melody_cuts(notes, rows)
-
-
-# ── Harmony voicing system ──
-
-HARMONY_VOICINGS = {
-    "stabs": {
-        "description": "Short chord stabs every 16 rows",
-        "interval": 16,
-        "cut_after": 6,
-    },
-    "sustain": {
-        "description": "Sustained pad chords, held across the pattern",
-        "interval": 32,
-        "cut_after": 24,
-    },
-    "rhythmic": {
-        "description": "Rhythmic chord hits synced to groove",
-        "interval": 8,
-        "cut_after": 4,
-    },
-}
-
-
-def _generate_harmony(chord_notes: list[int], rows: int,
-                      voicing: str = "stabs",
-                      num_voices: int = 2) -> list[list[tuple[int, int]]]:
-    """
-    Generate harmony parts for multiple channels.
-
-    Returns a list of note lists, one per voice: [[(row, midi_note), ...], ...]
-    Voice 0 = highest, Voice N = lowest (within the chord voicing range).
-    Note-cut events are included as (row, -1) tuples.
-    """
-    # Get voicing config
-    config = HARMONY_VOICINGS.get(voicing, HARMONY_VOICINGS["stabs"])
-    interval = config["interval"]
-    cut_after = config["cut_after"]
-
-    # Build voiced chord notes in octave 3-4 range (MIDI 48-72)
-    # One octave below melody range so harmony sits underneath
-    voiced = []
-    for cn in chord_notes[:4]:  # Max 4 chord tones
-        note = cn
-        while note < 48:
-            note += 12
-        while note > 72:
-            note -= 12
-        voiced.append(note)
-    voiced.sort()
-
-    # Ensure we have enough voices
-    num_voices = min(num_voices, len(voiced))
-    if num_voices == 0:
-        return []
-
-    # Spread voices across available chord tones
-    voice_notes = []
-    if num_voices == 1:
-        voice_notes = [voiced[0]]
-    elif num_voices == 2:
-        voice_notes = [voiced[0], voiced[-1]]
-    else:
-        # Pick evenly spaced tones
-        step = max(1, len(voiced) // num_voices)
-        for i in range(num_voices):
-            idx = min(i * step, len(voiced) - 1)
-            voice_notes.append(voiced[idx])
-
-    # Generate note events for each voice
-    result = []
-    for voice_idx, base_note in enumerate(voice_notes):
-        notes = []
-        for row in range(0, rows, interval):
-            # Add slight variation in timing for rhythmic feel
-            actual_row = row
-            if voicing == "rhythmic" and voice_idx > 0 and row % 16 == 8:
-                # Offset higher voices slightly for strum effect
-                actual_row = min(row + 1, rows - 1)
-
-            notes.append((actual_row, base_note))
-
-            # Add note-cut so notes don't ring indefinitely
-            cut_row = actual_row + cut_after
-            if cut_row < rows and cut_row < actual_row + interval:
-                notes.append((cut_row, -1))  # -1 signals note-cut
-        result.append(notes)
-
-    return result
-
-
-def _generate_counter_melody(scale_notes: list[int], chord_notes: list[int],
-                              melody_notes_list: list[tuple[int, int]],
-                              rows: int) -> list[tuple[int, int]]:
-    """
-    Generate a counter-melody that fills gaps in the main melody.
-
-    Moves in contrary motion and plays in the rests between melody phrases.
-    """
-    melody_range = [n for n in scale_notes if 60 <= n <= 83]
-    if not melody_range:
-        melody_range = [n + 12 for n in scale_notes if 48 <= n <= 71]
-    if not melody_range:
-        return []
-
-    chord_in_range = [n for n in chord_notes if n in melody_range]
-
-    # Find gaps in the melody (rows where melody is silent)
-    melody_rows = {row for row, _ in melody_notes_list}
-    # Extend occupied rows to include duration estimates
-    occupied = set()
-    sorted_melody = sorted(melody_notes_list, key=lambda x: x[0])
-    for i, (row, _) in enumerate(sorted_melody):
-        next_row = sorted_melody[i + 1][0] if i + 1 < len(sorted_melody) else rows
-        duration = min(next_row - row, 8)  # Assume max 8 row duration
-        for r in range(row, row + duration):
-            occupied.add(r)
-
-    # Generate counter notes in the gaps
-    notes = []
-    # Start from a chord tone in the upper register
-    if chord_in_range:
-        current = random.choice(chord_in_range)
-    else:
-        current = melody_range[len(melody_range) // 2]
-
-    row = 0
-    while row < rows:
-        if row not in occupied and random.random() < 0.4:
-            # Find direction: move opposite to where melody was heading
-            nearest_melody = None
-            for mr, mn in sorted_melody:
-                if mr > row:
-                    nearest_melody = mn
-                    break
-
-            idx = melody_range.index(current) if current in melody_range else len(melody_range) // 2
-
-            if nearest_melody and nearest_melody in melody_range:
-                melody_idx = melody_range.index(nearest_melody)
-                # Contrary motion: if melody goes up, counter goes down
-                if melody_idx > idx:
-                    step = random.choice([-1, -2])
-                else:
-                    step = random.choice([1, 2])
-            else:
-                step = random.choice([-1, 0, 1])
-
-            new_idx = max(0, min(len(melody_range) - 1, idx + step))
-            current = melody_range[new_idx]
-
-            # Snap to chord tone occasionally
-            if random.random() < 0.3 and chord_in_range:
-                closest = min(chord_in_range,
-                             key=lambda n: abs(melody_range.index(n) - new_idx)
-                             if n in melody_range else 999)
-                if closest in melody_range:
-                    current = closest
-
-            notes.append((row, current))
-            row += random.choice([4, 4, 8])
-        else:
-            row += 2
-
-    return notes
-
-
-def _generate_bass(root: int, chord_type: str,
-                   rows: int, style: str = "steady",
-                   weight: str = "heavy") -> list[tuple[int, int]]:
-    """Generate a bass line. Returns [(row, midi_note), ...]."""
-    # Register depends on weight
-    if weight == "light":
-        # Octave 3-4 (MIDI 48-71) — punchier, more melodic
-        bass_root = root
-        while bass_root >= 60:
-            bass_root -= 12
-        while bass_root < 48:
-            bass_root += 12
-    elif weight == "medium":
-        # Octave 3 (MIDI 42-59) — middle ground
-        bass_root = root
-        while bass_root >= 54:
-            bass_root -= 12
-        while bass_root < 42:
-            bass_root += 12
-    else:
-        # Octave 2-3 (MIDI 36-59) — deep and heavy
-        bass_root = root
-        while bass_root >= 48:
-            bass_root -= 12
-        while bass_root < 36:
-            bass_root += 12
-
-    chord = theory.build_chord(bass_root, chord_type)
-    notes = []
-
-    # Sparser step sizes for lighter weights
-    if weight == "light":
-        step_scale = 2  # half as many notes
-    elif weight == "medium":
-        step_scale = 1.5
-    else:
-        step_scale = 1
-
-    if style == "steady":
-        step = int(8 * step_scale)
-        for row in range(0, rows, step):
-            notes.append((row, bass_root))
-    elif style == "octave":
-        step = int(4 * step_scale)
-        for i, row in enumerate(range(0, rows, step)):
-            if i % 2 == 0:
-                notes.append((row, bass_root))
-            else:
-                notes.append((row, bass_root + 12))
-    elif style == "walking":
-        step = int(4 * step_scale)
-        for i, row in enumerate(range(0, rows, step)):
-            note = chord[i % len(chord)]
-            notes.append((row, note))
-    elif style == "driving":
-        step = int(2 * step_scale)
-        for row in range(0, rows, step):
-            notes.append((row, bass_root))
-
-    return notes
-
-
-def _generate_arpeggio(chord_notes: list[int], rows: int,
-                       style: str = "up") -> list[tuple[int, int]]:
-    """Generate an arpeggio pattern. Returns [(row, midi_note), ...]."""
-    # Arp in octave 4-5
-    arp_notes = []
-    for n in chord_notes:
-        for octave_shift in [0, 12]:
-            note = n + octave_shift
-            if 48 <= note <= 84:
-                arp_notes.append(note)
-    arp_notes.sort()
-
-    if not arp_notes:
-        return []
-
-    notes = []
-    if style == "up":
-        for i, row in enumerate(range(0, rows, 2)):
-            notes.append((row, arp_notes[i % len(arp_notes)]))
-    elif style == "down":
-        arp_notes_rev = list(reversed(arp_notes))
-        for i, row in enumerate(range(0, rows, 2)):
-            notes.append((row, arp_notes_rev[i % len(arp_notes_rev)]))
-    elif style == "updown":
-        seq = arp_notes + list(reversed(arp_notes[1:-1])) if len(arp_notes) > 2 else arp_notes
-        for i, row in enumerate(range(0, rows, 2)):
-            notes.append((row, seq[i % len(seq)]))
-    elif style == "random":
-        for row in range(0, rows, 2):
-            notes.append((row, random.choice(arp_notes)))
-
-    return notes
-
-
-def _generate_drums(drum_pattern: dict[str, list[int]],
-                    rows: int) -> dict[str, list[int]]:
-    """Expand a 16-step drum pattern to fill the given number of rows."""
-    rows_per_step = rows // 16
-    expanded = {}
-    for drum, pattern in drum_pattern.items():
-        hits = []
-        for step, hit in enumerate(pattern):
-            if hit:
-                hits.append(step * rows_per_step)
-        expanded[drum] = hits
-    return expanded
-
-
-def _humanize_volume(base_volume: int, amount: int = 6) -> int:
-    """Add subtle random velocity variation to a note."""
-    variation = random.randint(-amount, amount)
-    return max(1, min(64, base_volume + variation))
-
-
-def _apply_notes_to_pattern(pattern: ITPattern, channel: int,
-                            note_list: list[tuple[int, int]],
-                            instrument: int, volume: int = 255,
-                            effect: int = 0, effect_val: int = 0,
-                            humanize: bool = False):
-    """Write note events into a pattern channel.
-
-    Note-cut events are signaled by midi_note == -1.
-    """
-    for row, midi_note in note_list:
-        if 0 <= row < pattern.rows:
-            if midi_note == -1:
-                # Note-cut event
-                pattern.data[row][channel] = ITNote(note=NOTE_CUT)
-                continue
-            it_note = midi_to_it_note(midi_note)
-            vol = volume
-            if humanize and vol != 255:
-                vol = _humanize_volume(vol)
-            pattern.data[row][channel] = ITNote(
-                note=it_note,
-                instrument=instrument,
-                volume=vol,
-                effect=effect,
-                effect_val=effect_val,
-            )
-
-
-def _apply_vibrato(pattern: ITPattern, channel: int,
-                   note_list: list[tuple[int, int]], speed: int = 4, depth: int = 3):
-    """Add vibrato continuation to rows after note-on events."""
-    vibrato_val = ((speed & 0x0F) << 4) | (depth & 0x0F)
-    for i, (row, _) in enumerate(note_list):
-        # Get duration until next note or end of pattern
-        next_row = note_list[i + 1][0] if i + 1 < len(note_list) else pattern.rows
-        # Add vibrato on rows after the note-on (note-on row already has effect from _apply_notes)
-        for r in range(row + 1, min(next_row, pattern.rows)):
-            if pattern.data[r][channel].note == 0:  # Don't overwrite note events
-                pattern.data[r][channel] = ITNote(
-                    effect=FX_VIBRATO,
-                    effect_val=vibrato_val,
-                )
-
-
-def _apply_portamento(pattern: ITPattern, channel: int,
-                      note_list: list[tuple[int, int]],
-                      instrument: int, volume: int = 255,
-                      porta_speed: int = 32, humanize: bool = False):
-    """Write notes with tone portamento — slides between consecutive notes."""
-    for i, (row, midi_note) in enumerate(note_list):
-        if 0 <= row < pattern.rows:
-            it_note = midi_to_it_note(midi_note)
-            vol = volume
-            if humanize and vol != 255:
-                vol = _humanize_volume(vol)
-            if i == 0:
-                # First note: play normally
-                pattern.data[row][channel] = ITNote(
-                    note=it_note, instrument=instrument, volume=vol,
-                )
-            else:
-                # Subsequent notes: slide to them
-                pattern.data[row][channel] = ITNote(
-                    note=it_note, instrument=instrument, volume=vol,
-                    effect=FX_PORTAMENTO, effect_val=porta_speed,
-                )
-
-
-def _apply_harmony_fade(pattern: ITPattern, channel: int,
-                        note_list: list[tuple[int, int]], fade_rate: int = 2):
-    """Add volume slide down after each harmony note-on so notes decay naturally."""
-    for row, midi_note in note_list:
-        if midi_note == -1 or row < 0 or row >= pattern.rows:
-            continue
-        # Apply volume slide down on rows after the note-on until next event
-        for r in range(row + 1, pattern.rows):
-            cell = pattern.data[r][channel]
-            # Stop if we hit another note or note-cut on this channel
-            if cell.note != 0:
-                break
-            if cell.effect == 0:
-                cell.effect = FX_VOLUME_SLIDE
-                cell.effect_val = fade_rate  # 0x0y = slide down by y per tick
-
-
-def _apply_fade(pattern: ITPattern, channel: int, fade_in: bool = False,
-                fade_out: bool = False, rows_count: int = 8):
-    """Add volume fade in/out at pattern start/end."""
-    if fade_in:
-        # Volume slide up over first N rows
-        slide_val = 0x30  # Slide up by 3 per tick
-        for r in range(min(rows_count, pattern.rows)):
-            existing = pattern.data[r][channel]
-            if existing.effect == 0:
-                existing.effect = FX_VOLUME_SLIDE
-                existing.effect_val = slide_val
-    if fade_out:
-        # Volume slide down over last N rows
-        slide_val = 0x03  # Slide down by 3 per tick
-        start = max(0, pattern.rows - rows_count)
-        for r in range(start, pattern.rows):
-            existing = pattern.data[r][channel]
-            if existing.effect == 0:
-                existing.effect = FX_VOLUME_SLIDE
-                existing.effect_val = slide_val
-
-
-def _apply_drums_to_pattern(pattern: ITPattern, drum_hits: dict[str, list[int]],
-                            sample_map: dict[str, int],
-                            swing: int = 0):
-    """Write drum hits into pattern. swing=0-3 shifts off-beat hats late."""
-    drum_channels = {
-        "kick": CH_KICK, "snare": CH_SNARE, "hihat": CH_HIHAT,
-        "hat": CH_HIHAT, "tom": CH_TOM, "crash": CH_CRASH,
-        "open_hihat": CH_OPEN_HAT,
-    }
-    drum_note = midi_to_it_note(60)
-
-    for drum, hits in drum_hits.items():
-        ch = drum_channels.get(drum)
-        inst_key = drum if drum != "hat" else "hihat"
-        inst = sample_map.get(inst_key)
-        if ch is None or inst is None:
-            continue
-        for row in hits:
-            actual_row = row
-            # Apply swing to off-beat hihat hits
-            if swing > 0 and drum in ("hihat", "hat") and row % 8 == 4:
-                actual_row = min(row + swing, pattern.rows - 1)
-            if 0 <= actual_row < pattern.rows:
-                pattern.data[actual_row][ch] = ITNote(
-                    note=drum_note,
-                    instrument=inst,
-                )
-
-
-def _pick_section_bass(bass_weight: str, section_energy: float,
-                       bass_style: str) -> str:
-    """Choose bass style for a section based on weight and energy."""
-    if bass_weight == "light":
-        if section_energy > 0.85:
-            return random.choice(["steady", "walking"])
-        return random.choice(["steady", "steady", "walking"])
-    elif section_energy < 0.5:
-        return random.choice(["steady", "steady"])
-    elif section_energy > 0.85:
-        return random.choice(["driving", "octave", bass_style])
-    return bass_style
-
-
 def _pick_section_motif(sec_type: str, use_phrased: bool,
                         chorus_motif, verse_motif, bridge_motif) -> dict | None:
     """Pick the appropriate motif for a section type."""
@@ -867,7 +141,7 @@ def _pick_section_motif(sec_type: str, use_phrased: bool,
     elif sec_type == "bridge":
         return bridge_motif
     else:
-        return _generate_motif(length=random.choice([3, 4]))
+        return generate_motif(length=random.choice([3, 4]))
 
 
 def _compose_pattern(*, scale_notes, chord_root, chord_type, chord_notes,
@@ -892,33 +166,31 @@ def _compose_pattern(*, scale_notes, chord_root, chord_type, chord_notes,
 
     # ── Melody ──
     if layers["melody"]:
-        melody = _generate_melody(
+        melody = generate_melody(
             scale_notes, chord_notes, ROWS_PER_PATTERN, section_density,
             motif=section_motif, is_answer=is_answer, phrased=use_phrased,
         )
-        _apply_notes_to_pattern(
+        apply_notes_to_pattern(
             pat, CH_MELODY, melody, melody_sample,
             volume=melody_vol, humanize=True,
         )
-        _apply_harmony_fade(pat, CH_MELODY, melody, fade_rate=1)
-        _apply_vibrato(pat, CH_MELODY, melody,
-                       speed=vibrato_speed, depth=vibrato_depth)
+        apply_vibrato(pat, CH_MELODY, melody,
+                      speed=vibrato_speed, depth=vibrato_depth)
 
     # ── Harmony ──
     if layers["harmony"]:
-        tremolo_val = ((3 & 0x0F) << 4) | (2 & 0x0F)
         harmony_channels = [CH_HARMONY, CH_HARMONY2, CH_HARMONY3]
 
         if melody and sec_type in ("chorus", "bridge") and random.random() < 0.3:
-            counter = _generate_counter_melody(
+            counter = generate_counter_melody(
                 scale_notes, chord_notes, melody, ROWS_PER_PATTERN)
-            counter = _add_melody_cuts(counter, ROWS_PER_PATTERN, max_sustain=8)
-            _apply_notes_to_pattern(
+            counter = add_melody_cuts(counter, ROWS_PER_PATTERN, max_sustain=8)
+            apply_notes_to_pattern(
                 pat, CH_HARMONY, counter, sample_map["harmony"],
                 volume=int(20 * section_energy), humanize=True,
             )
-            _apply_harmony_fade(pat, CH_HARMONY, counter)
-            voices = _generate_harmony(
+            apply_harmony_fade(pat, CH_HARMONY, counter)
+            voices = generate_harmony(
                 chord_notes, ROWS_PER_PATTERN,
                 voicing=voicing_style,
                 num_voices=min(2, num_harmony_voices),
@@ -926,15 +198,15 @@ def _compose_pattern(*, scale_notes, chord_root, chord_type, chord_notes,
             for v_idx, voice_notes in enumerate(voices):
                 if v_idx + 1 < len(harmony_channels):
                     ch = harmony_channels[v_idx + 1]
-                    _apply_notes_to_pattern(
+                    apply_notes_to_pattern(
                         pat, ch, voice_notes,
                         sample_map["harmony"],
-                        volume=_humanize_volume(int(18 * section_energy), 4),
+                        volume=humanize_volume(int(18 * section_energy), 4),
                         humanize=True,
                     )
-                    _apply_harmony_fade(pat, ch, voice_notes)
+                    apply_harmony_fade(pat, ch, voice_notes)
         else:
-            voices = _generate_harmony(
+            voices = generate_harmony(
                 chord_notes, ROWS_PER_PATTERN,
                 voicing=voicing_style,
                 num_voices=num_harmony_voices,
@@ -943,26 +215,26 @@ def _compose_pattern(*, scale_notes, chord_root, chord_type, chord_notes,
                 if v_idx < len(harmony_channels):
                     ch = harmony_channels[v_idx]
                     vol = harmony_vol if v_idx == 0 else int(18 * section_energy)
-                    _apply_notes_to_pattern(
+                    apply_notes_to_pattern(
                         pat, ch, voice_notes,
                         sample_map["harmony"],
-                        volume=_humanize_volume(vol, 4),
+                        volume=humanize_volume(vol, 4),
                         humanize=True,
                     )
-                    _apply_harmony_fade(pat, ch, voice_notes)
+                    apply_harmony_fade(pat, ch, voice_notes)
 
     # ── Bass ──
     if layers["bass"]:
-        bass = _generate_bass(chord_root, chord_type, ROWS_PER_PATTERN, section_bass,
-                              weight=bass_weight)
+        bass = generate_bass(chord_root, chord_type, ROWS_PER_PATTERN, section_bass,
+                             weight=bass_weight)
         bass_vol = {"heavy": 255, "medium": 150, "light": 100}.get(bass_weight, 255)
         if use_bass_porta and len(bass) > 1:
-            _apply_portamento(
+            apply_portamento(
                 pat, CH_BASS, bass, sample_map["bass"],
                 volume=bass_vol, porta_speed=porta_speed, humanize=False,
             )
         else:
-            _apply_notes_to_pattern(
+            apply_notes_to_pattern(
                 pat, CH_BASS, bass, sample_map["bass"],
                 volume=bass_vol if bass_vol < 255 else 255,
                 humanize=True,
@@ -977,8 +249,8 @@ def _compose_pattern(*, scale_notes, chord_root, chord_type, chord_notes,
 
     # ── Arpeggio ──
     if layers["arp"]:
-        arp = _generate_arpeggio(chord_notes, ROWS_PER_PATTERN, arp_style)
-        _apply_notes_to_pattern(
+        arp = generate_arpeggio(chord_notes, ROWS_PER_PATTERN, arp_style)
+        apply_notes_to_pattern(
             pat, CH_ARP, arp, sample_map["arp"],
             volume=arp_vol, humanize=True,
         )
@@ -987,11 +259,11 @@ def _compose_pattern(*, scale_notes, chord_root, chord_type, chord_notes,
     if layers["drums"]:
         section_drum = theory.random_drum_pattern_for_section(
             sec_type, drum_pattern, drum_density)
-        drum_hits = _generate_drums(section_drum, ROWS_PER_PATTERN)
+        drum_hits = generate_drums(section_drum, ROWS_PER_PATTERN)
 
         is_last_chord = chord_idx == len(section_prog) - 1
         if fill_pattern and is_last_chord and not is_ending:
-            fill_hits = _generate_drums(fill_pattern, ROWS_PER_PATTERN)
+            fill_hits = generate_drums(fill_pattern, ROWS_PER_PATTERN)
             half = ROWS_PER_PATTERN // 2
             for drum_name, hits in fill_hits.items():
                 fill_rows = [h for h in hits if h >= half]
@@ -1003,12 +275,12 @@ def _compose_pattern(*, scale_notes, chord_root, chord_type, chord_notes,
             if "crash" not in drum_hits:
                 drum_hits["crash"] = []
 
-        _apply_drums_to_pattern(pat, drum_hits, sample_map, swing=swing_amount)
+        apply_drums_to_pattern(pat, drum_hits, sample_map, swing=swing_amount)
 
         for r in range(pat.rows):
             note = pat.data[r][CH_HIHAT]
             if note.note != 0:
-                note.volume = _humanize_volume(38, 8)
+                note.volume = humanize_volume(38, 8)
 
         if chord_idx == 0 and sec_type in ("chorus", "bridge"):
             crash_inst = sample_map.get("crash")
@@ -1020,111 +292,19 @@ def _compose_pattern(*, scale_notes, chord_root, chord_type, chord_notes,
                 )
 
     # ── Sustain safety net ──
-    # Scan tonal channels and ensure no note rings more than max_ring rows
-    # without a subsequent note or cut.  This catches any generator that
-    # forgets to add note-cuts (counter-melody, arp edge cases, etc.).
-    max_ring = 12
-    for ch in [CH_MELODY, CH_HARMONY, CH_HARMONY2, CH_HARMONY3, CH_ARP]:
-        last_note_row = None
-        for row in range(ROWS_PER_PATTERN):
-            cell = pat.data[row][ch]
-            if cell.note != 0:  # any note event (including cuts) resets
-                if cell.note == NOTE_CUT or cell.note == NOTE_OFF:
-                    last_note_row = None
-                else:
-                    last_note_row = row
-            elif last_note_row is not None and (row - last_note_row) == max_ring:
-                # Insert a cut here
-                pat.data[row][ch] = ITNote(note=NOTE_CUT)
-                last_note_row = None
+    apply_sustain_safety_net(pat)
 
     # ── Section transitions ──
     if is_intro and chord_idx == 0:
         for ch in [CH_MELODY, CH_HARMONY, CH_HARMONY2, CH_HARMONY3, CH_BASS, CH_ARP]:
-            _apply_fade(pat, ch, fade_in=True, rows_count=16)
+            apply_fade(pat, ch, fade_in=True, rows_count=16)
 
     if is_ending and chord_idx == len(section_prog) - 1:
         if ending_style in ("fadeout", "tag"):
             for ch in range(NUM_CHANNELS):
-                _apply_fade(pat, ch, fade_out=True, rows_count=24)
+                apply_fade(pat, ch, fade_out=True, rows_count=24)
 
     return pat
-
-
-# Map layer keys to the channels they control
-_LAYER_CHANNELS = {
-    "melody":  [CH_MELODY],
-    "harmony": [CH_HARMONY, CH_HARMONY2, CH_HARMONY3],
-    "bass":    [CH_BASS],
-    "arp":     [CH_ARP],
-    "drums":   [CH_KICK, CH_SNARE, CH_HIHAT, CH_TOM, CH_CRASH, CH_OPEN_HAT],
-}
-
-
-def _pattern_has_notes(pat: ITPattern, ch: int) -> bool:
-    """Check if a channel has any real notes (not cuts/offs) in a pattern."""
-    for row in range(pat.rows):
-        n = pat.data[row][ch].note
-        if n != 0 and n != NOTE_CUT and n != NOTE_OFF:
-            return True
-    return False
-
-
-def _pattern_last_note_rings(pat: ITPattern, ch: int) -> bool:
-    """Check if a channel's last event is a note (not a cut), meaning it rings past the pattern end."""
-    last_is_note = False
-    for row in range(pat.rows):
-        n = pat.data[row][ch].note
-        if n == NOTE_CUT or n == NOTE_OFF:
-            last_is_note = False
-        elif n != 0:
-            last_is_note = True
-    return last_is_note
-
-
-def _silence_inactive_channels(
-        orders: list[int], patterns: list[ITPattern],
-        song_structure: list[str], section_layers_map: dict,
-        progression: list, alt_progression: list, use_alt_chorus: bool):
-    """Insert NOTE_CUT at row 0 to prevent notes ringing across pattern boundaries.
-
-    Two cases are handled:
-    1. A layer goes inactive at a section boundary (e.g. melody off in bridge)
-    2. A channel had notes in the previous pattern but the current pattern has
-       no notes on that channel — the last note rings through the entire pattern.
-    """
-    import copy
-    from . import structure as struct_mod
-
-    # Tonal channels that can ring (drums naturally stop)
-    tonal_channels = [CH_MELODY, CH_HARMONY, CH_HARMONY2, CH_HARMONY3, CH_BASS, CH_ARP]
-
-    for ord_idx in range(1, len(orders)):
-        prev_pat = patterns[orders[ord_idx - 1]]
-        cur_pat_idx = orders[ord_idx]
-        cur_pat = patterns[cur_pat_idx]
-
-        needs_cut = []
-        max_ring = 12  # match the in-pattern safety net
-        for ch in tonal_channels:
-            # If previous pattern's last event on this channel is a ringing note,
-            # and current pattern has no note event in the first max_ring rows,
-            # we need to silence it at row 0.
-            if _pattern_last_note_rings(prev_pat, ch):
-                has_early_event = False
-                for row in range(min(max_ring, cur_pat.rows)):
-                    if cur_pat.data[row][ch].note != 0:
-                        has_early_event = True
-                        break
-                if not has_early_event:
-                    needs_cut.append(ch)
-
-        if needs_cut:
-            new_pat = copy.deepcopy(cur_pat)
-            for ch in needs_cut:
-                new_pat.data[0][ch] = ITNote(note=NOTE_CUT)
-            patterns.append(new_pat)
-            orders[ord_idx] = len(patterns) - 1
 
 
 def compose_song(seed: int | None = None, tempo_pref: str = "random",
@@ -1210,9 +390,9 @@ def compose_song(seed: int | None = None, tempo_pref: str = "random",
     # ── Motifs ──
     use_phrased = melody_style == "phrased"
     if use_phrased:
-        chorus_motif = _generate_motif(length=random.choice([4, 5]))
-        verse_motif = _vary_motif(chorus_motif, 0.4)
-        bridge_motif = _generate_motif(length=random.choice([3, 4]))
+        chorus_motif = generate_motif(length=random.choice([4, 5]))
+        verse_motif = vary_motif(chorus_motif, 0.4)
+        bridge_motif = generate_motif(length=random.choice([3, 4]))
     else:
         chorus_motif = verse_motif = bridge_motif = None
 
@@ -1257,7 +437,7 @@ def compose_song(seed: int | None = None, tempo_pref: str = "random",
 
         section_prog = struct.get_section_progression(
             section, progression, alt_progression, use_alt_chorus)
-        section_bass = _pick_section_bass(bass_weight, section_energy, bass_style)
+        section_bass = pick_section_bass(bass_weight, section_energy, bass_style)
 
         for chord_idx, (degree, chord_type) in enumerate(section_prog):
             cache_key = (section, chord_idx)
@@ -1315,11 +495,7 @@ def compose_song(seed: int | None = None, tempo_pref: str = "random",
         song_structure, pattern_cache, progression, alt_progression, use_alt_chorus)
 
     # ── Silence channels at section boundaries ──
-    # When a layer is active in one section but inactive in the next,
-    # insert NOTE_CUT at row 0 to prevent notes ringing across sections.
-    _silence_inactive_channels(
-        orders, patterns, song_structure, section_layers_map,
-        progression, alt_progression, use_alt_chorus)
+    silence_inactive_channels(orders, patterns)
 
     # ── Song info ──
     key_name = theory.NOTE_NAMES[key % 12]
@@ -1386,18 +562,18 @@ def compose_and_save(filepath: str, seed: int | None = None,
     # Channel mix — tuned by ear via master panel
     #   0=melody, 1-3=harmony, 4=bass, 5=arp, 6-11=drums
     channel_volumes = [
-        14,  # CH_MELODY
+        12,  # CH_MELODY
         23,  # CH_HARMONY
         23,  # CH_HARMONY2
         22,  # CH_HARMONY3
          7,  # CH_BASS
         30,  # CH_ARP
-        64,  # CH_KICK
-        60,  # CH_SNARE
-        48,  # CH_HIHAT
-        56,  # CH_TOM
-        52,  # CH_CRASH
-        44,  # CH_OPEN_HAT
+        33,  # CH_KICK
+        33,  # CH_SNARE
+        33,  # CH_HIHAT
+        33,  # CH_TOM
+        33,  # CH_CRASH
+        33,  # CH_OPEN_HAT
     ]
     write_it_file(
         filepath=filepath,
