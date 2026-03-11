@@ -180,12 +180,15 @@ RHYTHM_TEMPLATES = [
 # Contour shapes: relative direction for each note in a motif
 # Values are scale steps from starting note — wider intervals = more melodic movement
 CONTOURS = {
-    "arch":    [0, 2, 4, 2, 0],        # Up then down
-    "descent": [0, -1, -3, -5, -3],    # Fall then partial recover
-    "climb":   [0, 2, 3, 5, 3],        # Rise then step back
-    "valley":  [0, -2, -4, -2, 0],     # Dip then return
-    "leap_return": [0, 5, 2, 0, -1],   # Big jump, stepwise return
-    "zigzag":  [0, 3, -2, 2, -1],      # Alternating
+    # Cumulative: each value is a step from current position
+    "arch":        [0, 2, 2, -2, -2],       # Rise then fall
+    "descent":     [0, -1, -2, -2, 1],      # Stepwise fall, partial recover
+    "climb":       [0, 1, 2, 2, -1],        # Gradual rise, step back
+    "valley":      [0, -2, -2, 2, 2],       # Dip then return
+    "leap_return": [0, 4, -1, -1, -2],      # Big jump, walk back down
+    "zigzag":      [0, 3, -4, 3, -2],       # Alternating leaps
+    "cascade":     [0, -3, 2, -3, 1],       # Falling with rebounds
+    "soar":        [0, 2, 3, 1, -2],        # Big climb then relax
 }
 
 
@@ -272,19 +275,14 @@ def _realize_motif(motif: dict, scale_notes: list[int],
         if row >= rows:
             break
 
-        # Apply contour direction as scale steps
-        target_idx = start_note_idx + direction
+        # Contour is cumulative — each step moves from current position
+        target_idx = current_idx + direction
         target_idx = max(0, min(len(melody_notes) - 1, target_idx))
 
-        # Leap-step balance: if very big jump from current, soften slightly
-        jump = abs(target_idx - current_idx)
-        if jump > 4 and i > 0:
-            # Pull partway toward current (don't fully clamp)
-            if target_idx > current_idx:
-                target_idx = current_idx + jump - 1
-            else:
-                target_idx = current_idx - jump + 1
-            target_idx = max(0, min(len(melody_notes) - 1, target_idx))
+        # If we hit a boundary and would repeat the same note, nudge the other way
+        if target_idx == current_idx and direction != 0:
+            nudge = 1 if current_idx < len(melody_notes) // 2 else -1
+            target_idx = max(0, min(len(melody_notes) - 1, current_idx + nudge))
 
         # Last note: resolve to chord tone if requested
         if resolve_to_chord and i == len(motif["rhythm"]) - 1 and chord_in_range:
@@ -973,11 +971,20 @@ def compose_song(seed: int | None = None, tempo_pref: str = "random",
         is_ending = section in ("outro", "tag")
         section_energy = energy_curve.get(section, 0.7)
 
-        # Scale melody density by section energy
+        # Scale melody density by section energy, but keep a floor so endings aren't empty
         section_density = melody_density * section_energy
+        if is_ending:
+            section_density = max(section_density, 0.45)
 
         # Use alternate progression for chorus sections
-        section_prog = alt_progression if (use_alt_chorus and sec_type == "chorus") else progression
+        # Endings use a shortened progression (half length) so they don't drag
+        if is_ending:
+            full_prog = progression
+            section_prog = full_prog[:max(1, len(full_prog) // 2)]
+        elif use_alt_chorus and sec_type == "chorus":
+            section_prog = alt_progression
+        else:
+            section_prog = progression
 
         # Determine bass style per section energy and weight
         if bass_weight == "light":
@@ -1044,7 +1051,8 @@ def compose_song(seed: int | None = None, tempo_pref: str = "random",
                     elif sec_type == "bridge":
                         section_motif = bridge_motif
                     else:
-                        section_motif = _vary_motif(verse_motif, 0.5) if verse_motif else None
+                        # Outro/tag/other: generate a fresh motif for variety
+                        section_motif = _generate_motif(length=random.choice([3, 4]))
                 # Answer phrase on even chord indices (resolution pattern)
                 is_answer = chord_idx % 2 == 1
                 melody = _generate_melody(
@@ -1201,7 +1209,13 @@ def compose_song(seed: int | None = None, tempo_pref: str = "random",
     orders = []
     for section in song_structure:
         sec_type = _section_type(section)
-        s_prog = alt_progression if (use_alt_chorus and sec_type == "chorus") else progression
+        s_is_ending = section in ("outro", "tag")
+        if s_is_ending:
+            s_prog = progression[:max(1, len(progression) // 2)]
+        elif use_alt_chorus and sec_type == "chorus":
+            s_prog = alt_progression
+        else:
+            s_prog = progression
         for chord_idx in range(len(s_prog)):
             cache_key = (section, chord_idx)
             orders.append(pattern_cache[cache_key])
