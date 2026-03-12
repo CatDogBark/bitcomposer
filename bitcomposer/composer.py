@@ -429,17 +429,24 @@ def compose_song(seed: int | None = None, tempo_pref: str = "random",
         sec_type = struct.section_type(section)
         is_intro = section == "intro"
         is_ending = section in ("outro", "tag")
-        section_energy = energy_curve.get(section, 0.7)
-
-        section_density = melody_density * section_energy
-        if is_ending:
-            section_density = max(section_density, 0.45)
+        base_energy = energy_curve.get(section, 0.7)
 
         section_prog = struct.get_section_progression(
             section, progression, alt_progression, use_alt_chorus)
-        section_bass = pick_section_bass(bass_weight, section_energy, bass_style)
+        num_chords = len(section_prog)
 
         for chord_idx, (degree, chord_type) in enumerate(section_prog):
+            # Graduated fadeout: ramp energy down across outro patterns
+            if section == "outro" and ending_style == "fadeout" and num_chords > 1:
+                fade_progress = chord_idx / (num_chords - 1)  # 0.0 to 1.0
+                section_energy = base_energy * (1.0 - fade_progress * 0.7)
+            else:
+                section_energy = base_energy
+
+            section_density = melody_density * section_energy
+            if is_ending:
+                section_density = max(section_density, 0.45)
+            section_bass = pick_section_bass(bass_weight, section_energy, bass_style)
             cache_key = (section, chord_idx)
             if cache_key in pattern_cache:
                 continue
@@ -562,18 +569,18 @@ def compose_and_save(filepath: str, seed: int | None = None,
     # Channel mix — tuned by ear via master panel
     #   0=melody, 1-3=harmony, 4=bass, 5=arp, 6-11=drums
     channel_volumes = [
-        12,  # CH_MELODY
-        23,  # CH_HARMONY
-        23,  # CH_HARMONY2
-        22,  # CH_HARMONY3
-         7,  # CH_BASS
-        30,  # CH_ARP
-        33,  # CH_KICK
-        33,  # CH_SNARE
-        33,  # CH_HIHAT
-        33,  # CH_TOM
-        33,  # CH_CRASH
-        33,  # CH_OPEN_HAT
+        13,  # CH_MELODY
+        25,  # CH_HARMONY
+        25,  # CH_HARMONY2
+        25,  # CH_HARMONY3
+         8,  # CH_BASS
+        33,  # CH_ARP
+        36,  # CH_KICK
+        36,  # CH_SNARE
+        36,  # CH_HIHAT
+        36,  # CH_TOM
+        36,  # CH_CRASH
+        36,  # CH_OPEN_HAT
     ]
     write_it_file(
         filepath=filepath,

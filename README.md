@@ -103,7 +103,7 @@ Five song forms control the high-level architecture:
 - **short** — 2-3 sections with no intro/outro (compact, great for game level music)
 - **linear** — intro → 4-6 unique sections → outro (through-composed, no repeats, RPG/adventure feel)
 
-Each form has its own energy curve. Endings are randomly chosen (fadeout, tag, or abrupt), with short forms skipping tag endings.
+Each form has its own energy curve. Endings are weighted toward fadeout (45%) and tag (40%), with abrupt endings rare (15%). Fadeout endings gradually ramp energy down across the outro patterns for a smooth wind-down. Short forms skip tag endings.
 
 ## How It Works
 
@@ -112,13 +112,13 @@ Each form has its own energy curve. Endings are randomly chosen (fadeout, tag, o
 3. **Generate motifs** — creates rhythmic+melodic templates with contour shapes that repeat and vary across sections, giving the melody recognizable phrases
 4. **Select instruments** — picks from 30+ synthesized presets based on style preference (SNES waveforms vs Genesis FM), with alternate lead for later sections
 5. **Compose layers**:
-   - **Melody** — motif-based phrases with question-answer structure, vibrato, register variation, note-cuts and volume decay to prevent droning
+   - **Melody** — motif-based phrases with question-answer structure, vibrato, register variation, note-cuts to prevent droning
    - **Harmony** — 2-3 note chord voicings in a lower octave with volume decay, optional counter-melody in chorus/bridge
    - **Bass** — root movement with weight control (heavy/medium/light affects register, volume, rhythm density, sustain, and sample selection)
    - **Arpeggio** — chord tones in patterns (up, down, up-down, random)
    - **Drums** — per-section patterns with fills at transitions, swing on hi-hats, crash on downbeats
 6. **Arrange** — energy curves scale volumes and density across sections (intro 50% → final chorus 100%), variable structure with multiple ending styles
-7. **Master** — per-channel volume mixing (melody at full, harmony pushed back, drums balanced), volume decay on sustained notes
+7. **Master** — per-channel volume mixing (melody leads, harmony pushed back, drums balanced), sustain safety nets prevent notes ringing across section boundaries
 8. **Write** — outputs a valid 12-channel Impulse Tracker module file
 
 ## License

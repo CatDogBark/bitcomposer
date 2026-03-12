@@ -38,7 +38,7 @@ LAYERS = {
     "chorus":      {"drums": True,  "bass": True,  "melody": True,  "arp": True,  "harmony": True},
     "bridge":      {"drums": True,  "bass": True,  "melody": False, "arp": True,  "harmony": True},
     "bridge_mel":  {"drums": True,  "bass": True,  "melody": True,  "arp": False, "harmony": True},
-    "outro":       {"drums": False, "bass": True,  "melody": True,  "arp": False, "harmony": False},
+    "outro":       {"drums": False, "bass": True,  "melody": True,  "arp": True,  "harmony": False},
     "tag":         {"drums": False, "bass": True,  "melody": True,  "arp": False, "harmony": True},
     # Rondo-specific
     "theme":       {"drums": True,  "bass": True,  "melody": True,  "arp": True,  "harmony": True},
@@ -90,7 +90,7 @@ def _form_standard() -> tuple[list[str], dict[str, float]]:
     curve = {
         "intro": 0.5, "verse1": 0.65, "chorus1": 0.85,
         "verse2": 0.75, "chorus2": 0.90,
-        "bridge": 0.60, "chorus3": 1.0, "outro": 0.45,
+        "bridge": 0.60, "chorus3": 1.0, "outro": 0.60,
     }
     if random.random() < 0.5:
         idx = structure.index("bridge")
@@ -103,7 +103,7 @@ def _form_aaba() -> tuple[list[str], dict[str, float]]:
     structure = ["intro", "verse1", "verse2", "bridge", "verse3", "outro"]
     curve = {
         "intro": 0.45, "verse1": 0.65, "verse2": 0.80,
-        "bridge": 0.70, "verse3": 0.90, "outro": 0.40,
+        "bridge": 0.70, "verse3": 0.90, "outro": 0.55,
     }
     # Sometimes repeat the whole form (AABA AABA) for a longer piece
     if random.random() < 0.35:
@@ -121,7 +121,7 @@ def _form_rondo() -> tuple[list[str], dict[str, float]]:
     structure = ["intro", "theme1", "episode1", "theme2", "episode2", "theme3", "outro"]
     curve = {
         "intro": 0.45, "theme1": 0.75, "episode1": 0.60,
-        "theme2": 0.85, "episode2": 0.70, "theme3": 1.0, "outro": 0.40,
+        "theme2": 0.85, "episode2": 0.70, "theme3": 1.0, "outro": 0.55,
     }
     return structure, curve
 
@@ -150,7 +150,7 @@ def _form_linear() -> tuple[list[str], dict[str, float]]:
     structure.append("outro")
 
     # Energy builds gradually then winds down
-    curve = {"intro": 0.45, "outro": 0.40}
+    curve = {"intro": 0.45, "outro": 0.55}
     for i in range(1, num_sections + 1):
         # Peak around 2/3 through
         peak_pos = num_sections * 0.67
@@ -173,7 +173,7 @@ _FORM_FUNCS = {
 
 def apply_ending(structure: list[str], layers: dict, energy: dict) -> str:
     """Apply an ending style to the structure. Returns the ending style name."""
-    ending = random.choice(["fadeout", "tag", "abrupt"])
+    ending = random.choices(["fadeout", "tag", "abrupt"], weights=[45, 40, 15], k=1)[0]
 
     # Short form doesn't get tag endings — just fade or abrupt
     has_outro = "outro" in structure
@@ -197,8 +197,10 @@ def get_section_progression(section: str, progression: list, alt_progression: li
     """Get the chord progression for a given section."""
     is_ending = section in ("outro", "tag")
     st = section_type(section)
-    if is_ending:
+    if section == "tag":
         return progression[:max(1, len(progression) // 2)]
+    if section == "outro":
+        return progression
     elif use_alt_chorus and st == "chorus":
         return alt_progression
     return progression
